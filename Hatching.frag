@@ -17,11 +17,19 @@ uniform sampler2D u_tex4;
 uniform sampler2D u_tex5;
 uniform sampler2D u_tex6;
 
+vec2 fitContainUV(vec2 frag, vec2 screen, vec2 texSize) {
+    float s = min(screen.x / texSize.x, screen.y / texSize.y);
+    vec2 size   = texSize * s;           // 縮放後尺寸
+    vec2 offset = (screen - size) * 0.5; // 置中偏移
+    return (frag - offset) / size;       // 轉為 0..1 貼圖座標
+}
 void main()
 {
-    vec2 uv= gl_FragCoord.xy/u_resolution.xy;
-    vec2 vUv=fract(6.0*uv);                        //key
-    float shading= texture2D(u_tex0, uv).g; //取MonaLisa綠色版作為明亮值
+    const vec2 TEX0_SIZE = vec2(1152.0, 768.0); // 例：1152x768；不確定就填你的實際圖尺寸
+
+    vec2 uv  = fitContainUV(gl_FragCoord.xy, u_resolution, TEX0_SIZE);
+    vec2 vUv = fract(6.0 * clamp(uv, 0.0, 1.0)); // 防止邊界 wrap
+    float shading = texture2D(u_tex0, clamp(uv, 0.0, 1.0)).g;
 
 
     vec4 c;
