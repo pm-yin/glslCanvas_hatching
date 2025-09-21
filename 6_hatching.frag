@@ -6,7 +6,7 @@
 precision mediump float;
 #endif
 
-uniform vec2 u_resolution;
+uniform vec2 u_resolution; //環境宣告
 uniform vec2 u_mouse;
 uniform float u_time;
 uniform sampler2D u_tex0; //MonaLisa
@@ -22,9 +22,9 @@ uniform sampler2D u_tex7; //Pina
 
 void main()
 {
-    vec2 uv= gl_FragCoord.xy/u_resolution.xy;
-    vec2 vUv=fract(6.0*uv);                        //key
-    float shading= texture2D(u_tex7, uv).g; //取MonaLisa綠色版作為明亮值
+    vec2 uv= gl_FragCoord.xy/u_resolution.xy; //定義畫布單位由左下0,0到右下1,0
+    vec2 vUv=fract(6.0*uv);                        //key 6倍拼貼關係
+     float shading= texture2D(u_tex7, uv).g; //取MonaLisa綠色版(g)作為明亮值
 
 
     vec4 c;
