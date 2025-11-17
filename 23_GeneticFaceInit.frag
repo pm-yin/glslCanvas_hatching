@@ -108,7 +108,9 @@ void main()
 void main()
 {
     vec2 uv=fragCoord/iResolution.xy;
-    gl_FragColor = texture2D( u_buffer0, uv );
+    vec2 mouse=iMouse.xy/iResolution.xy;
+    gl_FragColor=mix(texture2D( u_buffer0, uv ),texture2D( u_tex0, uv ),step(uv.x, mouse.x));
+    //gl_FragColor = texture2D( u_tex0, uv );
 }
 
 #endif
