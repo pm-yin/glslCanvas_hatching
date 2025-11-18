@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>GlslCanvas</title>
+    <script type="text/javascript" src="dist/GlslCanvas.js"></script>
+    <style>
+        body {
+            background: #101515;
+        }
+
+        /* 外層容器：固定比例 2:3 */
+        #canvas-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 60vmin;
+            aspect-ratio: 2 / 3;   /* 固定比例 */
+        }
+
+        /* canvas 填滿容器 */
+        #glslCanvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="canvas-container">
+        <canvas id="glslCanvas" data-fragment-url="25.frag"
+            data-textures="data/photo4.png, data/photo3.png"></canvas>
+    </div>
+
+<script>
+    const container = document.getElementById("canvas-container");
+    const canvas = document.getElementById("glslCanvas");
+
+    function resizeCanvas() {
+        const rect = container.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+
+        // 設定 canvas 的真實像素尺寸 = 顯示尺寸 * dpr
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+
+        // 同步 CSS 尺寸（保持固定比例）
+        canvas.style.width = rect.width + "px";
+        canvas.style.height = rect.height + "px";
+    }
+
+    // 執行一次，並監聽視窗大小變化
+    resizeCanvas();
+    window.addEventListener("resize", resizeCanvas);
+
+    // 建立 GlslCanvas
+    const sandbox = new GlslCanvas(canvas);
+</script>
+
+</body>
+
+</html>

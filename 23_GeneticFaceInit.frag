@@ -1,35 +1,51 @@
-// 20200220_glsl Genetic Face_v0.frag
-// Title: Genetic Face
-// Reference: https://www.shadertoy.com/view/XsGXWW
-
-//#version 300 es
-//#extension GL_OES_standard_derivatives : enable
+// Evolved Geometrize Fragment Shader
+// Inspired by: Artificial Evolution for Computer Graphics (Karl Sims)
+// Implements: Multi-type Genotype (Triangle, Circle, Line), Symbolic Expression Color, Hybrid Selection
 
 #ifdef GL_ES
+
 precision mediump float;
+
 #endif
 
+
+
 uniform vec2 u_resolution;
+
 uniform vec2 u_mouse;
+
 uniform float u_time;
 
+
+
 #define iTime u_time
+
 #define iResolution u_resolution
+
 #define iMouse u_mouse
+
 #define fragCoord gl_FragCoord.xy
-uniform sampler2D u_tex0;		//data/CMH_oil_sad.png
+
+uniform sampler2D u_tex0;       //data/CMH_oil_sad.png
+
 uniform sampler2D u_tex1;       //data/CMH_oil_joy.png
-uniform sampler2D u_buffer0;	//FBO from previous iterated frame
+
+uniform sampler2D u_buffer0;    //FBO from previous iterated frame
 
 
-//==================PASS A
+//==============================================================
+// PASS A: EVOLUTION LOGIC (BUFFER_0)
+//==============================================================
 #if defined( BUFFER_0 )
 
-//#define SOURCE_COLORS
-#define EVERY_PIXEL_SAME_COLOR
-#define TRIANGLES
+// --- CONFIGURATION ---
+#define NUM_GENOTYPE_PARAMS 18.0
+#define EXPLORATION_TIME 30.0 // 前30秒允許更大的探索性突變
+// ---------------------
 
-//Randomness code from Martin, here: https://www.shadertoy.com/view/XlfGDS
+// --- UTILITY FUNCTIONS ---
+
+// [cite: 30] Randomness function based on shader toy common methods
 float Random_Final(vec2 uv, float seed)
 {
     float fixedSeed = abs(seed) + 1.0;
@@ -37,81 +53,155 @@ float Random_Final(vec2 uv, float seed)
     return fract(sin(x) * 43758.5453);
 }
 
-//Test if a point is in a triangle
+// [cite: 32] Test if a point is in a triangle
 bool pointInTriangle(vec2 triPoint1, vec2 triPoint2, vec2 triPoint3, vec2 testPoint)
 {
     float denominator = ((triPoint2.y - triPoint3.y)*(triPoint1.x - triPoint3.x) + (triPoint3.x - triPoint2.x)*(triPoint1.y - triPoint3.y));
     float a = ((triPoint2.y - triPoint3.y)*(testPoint.x - triPoint3.x) + (triPoint3.x - triPoint2.x)*(testPoint.y - triPoint3.y)) / denominator;
     float b = ((triPoint3.y - triPoint1.y)*(testPoint.x - triPoint3.x) + (triPoint1.x - triPoint3.x)*(testPoint.y - triPoint3.y)) / denominator;
     float c = 1.0 - a - b;
- 
+    
     return 0.0 <= a && a <= 1.0 && 0.0 <= b && b <= 1.0 && 0.0 <= c && c <= 1.0;
 }
 
-void main()
+// [cite: 32] Test if a point is in a circle
+bool pointInCircle(vec2 center, float radius, vec2 testPoint)
 {
-    vec2 imageUV  = fragCoord.xy / iResolution.xy;
-    vec2 testUV = imageUV;
-
-#ifdef EVERY_PIXEL_SAME_COLOR
-    testUV = vec2(1.0, 1.0);   
-#endif
-
-    vec2 triPoint1 = vec2(Random_Final(testUV, iTime), Random_Final(testUV, iTime * 2.0));
-    vec2 triPoint2 = vec2(Random_Final(testUV, iTime * 3.0), Random_Final(testUV, iTime * 4.0));
-    vec2 triPoint3 = vec2(Random_Final(testUV, iTime * 5.0), Random_Final(testUV, iTime * 6.0));
-
-    vec4 testColor = vec4(Random_Final(testUV, iTime * 10.0),
-                          Random_Final(testUV, iTime * 11.0),
-                          Random_Final(testUV, iTime * 12.0),
-                          1.0);
-
-#ifdef SOURCE_COLORS
-    vec2 colorUV = vec2(Random_Final(testUV, iTime * 10.0),
-                        Random_Final(testUV, iTime * 11.0));
-
-    testColor = texture( u_tex1, colorUV );
-#endif
-    
-    vec4 trueColor = texture2D( u_tex0, imageUV );
-    vec4 prevColor = texture2D( u_buffer0, imageUV );
-
-    gl_FragColor = prevColor;
-
-    bool isInTriangle = true;
-
-#ifdef TRIANGLES
-    isInTriangle = pointInTriangle(triPoint1, triPoint2, triPoint3, imageUV); 
-#endif
-
-    // original
-    /*if(isInTriangle && abs(length(trueColor - testColor)) < abs(length(trueColor - prevColor)))
-    {  gl_FragColor = testColor;}*/
-
-    // modified for forward and backward evolution
-    if(isInTriangle)
-    {
-        float prevDiff = abs(length(trueColor - prevColor));
-        float testDiff = abs(length(trueColor - testColor));
-        float score = prevDiff-testDiff;
-        if(u_time < 20.0 && score < 0.0) gl_FragColor = testColor;          //backwards evolution
-        else if(u_time >= 20.0 && score > 0.0) gl_FragColor = testColor;    //forward evolution
-        
-    }
-
+    return length(testPoint - center) < radius;
 }
 
+// [cite: 32] Test if a point is on a thin line (Simulated)
+bool pointInLine(vec2 p1, vec2 p2, float width, vec2 testPoint)
+{
+    float len = length(p2 - p1);
+    vec2 dir = (p2 - p1) / len;
+    // Projection onto the line segment
+    float t = clamp(dot(testPoint - p1, dir), 0.0, len);
+    vec2 proj = dir * t;
+    // Check distance to the closest point on the segment
+    return length(testPoint - (p1 + proj)) < width;
+}
 
-//==================Main Pass
+// [cite: 16] Symbolic Expression Color Function (Simulating evolved lisp expression)
+// Genotype: colorParams vec3
+vec4 evolvedColorExpression(vec2 uv, float time, vec3 colorParams)
+{
+    // A complex, parameterized, procedural color formula (simulated genotype) [cite: 16]
+    float R_expr = abs(sin(uv.x * colorParams.x + time * colorParams.y) * 0.5 + 0.5);
+    float G_expr = abs(cos(uv.y * colorParams.x - time * colorParams.z) * 0.5 + 0.5);
+    float B_expr = mod(R_expr + G_expr * colorParams.y, 1.0);
+    
+    // Alpha transparency
+    float A = 0.5; 
+
+    // Final color with a blend
+    return vec4(R_expr, G_expr, B_expr, A) * 1.5;
+}
+
+// --- MAIN EVOLUTION LOOP ---
+
+void main()
+{
+    vec2 imageUV = fragCoord.xy / iResolution.xy;
+    vec2 testUV = vec2(1.0, 1.0); // Use constant UV for global random parameters
+
+    // 1. GENOTYPE PARAMETER GENERATION (Variation / Mutation) [cite: 50]
+    
+    // Genotype: Shape Type (0:Triangle, 1:Circle, 2:Line) [cite: 16]
+    float randomType = Random_Final(testUV, iTime * NUM_GENOTYPE_PARAMS);
+    int shapeType = int(randomType * 3.0); 
+
+    // Genotype: Center Point & Scale (Multi-scales) [cite: 15]
+    vec2 centerPoint = vec2(Random_Final(testUV, iTime), Random_Final(testUV, iTime * 2.0));
+    float scaleFactor = Random_Final(testUV, iTime * (NUM_GENOTYPE_PARAMS + 1.0)) * 0.1 + 0.005; 
+    
+    // Genotype: Color Parameters (Symbolic Expression Genes) [cite: 16]
+    vec3 colorParams = vec3(
+        Random_Final(testUV, iTime * 14.0) * 10.0,
+        Random_Final(testUV, iTime * 15.0) * 2.0,
+        Random_Final(testUV, iTime * 16.0) * 3.0
+    );
+    
+    // 2. PHENOTYPE: Expression & Test Color [cite: 41]
+    // Test Color is generated by the evolved symbolic expression [cite: 16]
+    vec4 testColor = evolvedColorExpression(imageUV, iTime, colorParams);
+    
+    // 3. TARGET SELECTION (Multi Target Images / User Direction) [cite: 13]
+    vec4 targetColor;
+    
+    // Switch target image based on time (simulating user selecting a new direction) [cite: 13]
+    float targetSelect = step(0.5, sin(iTime / EXPLORATION_TIME)); // Switches roughly every 31.4 seconds
+    
+    if (targetSelect > 0.5) {
+        // Target 1 (u_tex0) [cite: 13]
+        targetColor = texture2D(u_tex0, imageUV);
+    } else {
+        // Target 2 (u_tex1) [cite: 13]
+        targetColor = texture2D(u_tex1, imageUV);
+    }
+    
+    vec4 trueColor = targetColor;
+    vec4 prevColor = texture2D(u_buffer0, imageUV);
+    gl_FragColor = prevColor; // Start with the previous state
+
+    // 4. PHENOTYPE: Shape/Form Generation [cite: 41]
+    bool isInShape = false;
+    
+    if (shapeType == 1) {
+        // Circle [cite: 16]
+        isInShape = pointInCircle(centerPoint, scaleFactor, imageUV);
+    } else if (shapeType == 2) {
+        // Thin Line [cite: 16]
+        vec2 p2 = centerPoint + vec2(Random_Final(testUV, iTime * 7.0), Random_Final(testUV, iTime * 8.0)) * scaleFactor * 5.0;
+        isInShape = pointInLine(centerPoint, p2, scaleFactor * 0.1, imageUV);
+    } else { 
+        // Triangle (Default / Original) [cite: 15]
+        vec2 triPoint2 = centerPoint + vec2(Random_Final(testUV, iTime * 3.0), Random_Final(testUV, iTime * 4.0)) * scaleFactor;
+        vec2 triPoint3 = centerPoint + vec2(Random_Final(testUV, iTime * 5.0), Random_Final(testUV, iTime * 6.0)) * scaleFactor;
+        isInShape = pointInTriangle(centerPoint, triPoint2, triPoint3, imageUV);
+    }
+
+    // 5. SELECTION PROCESS (Non-random) [cite: 51]
+    if (isInShape)
+    {
+        // Fitness Function: Color difference (L1 Norm) [cite: 45]
+        float prevDiff = abs(length(trueColor.rgb - prevColor.rgb));
+        float testDiff = abs(length(trueColor.rgb - testColor.rgb));
+        float score = prevDiff - testDiff; // Positive score means improvement (higher fitness) [cite: 46, 47]
+
+        // Hybrid Selection Strategy: Prioritize improvement, but allow small exploration [cite: 507]
+        bool accept = score > 0.0; // Accept if it's an improvement [cite: 46]
+        
+        // Exploration (Simulated Backward/Random Evolution) [cite: 50]
+        // Allow worse results with low probability during exploration phase (u_time < EXPLORATION_TIME) [cite: 507]
+        if (iTime < EXPLORATION_TIME && score < 0.0) {
+            float acceptanceProb = Random_Final(testUV, iTime * 17.0);
+            // Smaller 'score' (i.e., less bad), higher acceptance chance
+            float explorationThreshold = exp(score * 100.0); 
+            if (acceptanceProb < explorationThreshold) { 
+                accept = true; // Accept for exploration [cite: 50]
+            }
+        }
+        
+        // Final Reproduction [cite: 49]
+        if (accept) {
+            gl_FragColor = testColor;
+        }
+    }
+}
+
+//==============================================================
+// MAIN PASS: DISPLAY
+//==============================================================
 #else
 
 void main()
 {
     vec2 uv=fragCoord/iResolution.xy;
     vec2 mouse=iMouse.xy/iResolution.xy;
+    
+    // Display the evolved image (u_buffer0) and transition to the original image (u_tex0) based on mouse X [cite: 39]
     gl_FragColor=mix(texture2D( u_buffer0, uv ),texture2D( u_tex0, uv ),step(uv.x, mouse.x));
-    //gl_FragColor = texture2D( u_tex0, uv );
 }
 
 #endif
-
